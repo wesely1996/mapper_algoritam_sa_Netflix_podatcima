@@ -1,3 +1,4 @@
+
 class EtherNetwork:
 
 	modelName = None
