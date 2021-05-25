@@ -1,6 +1,6 @@
-# import rt_00_functions
 import os
 import pandas as pd
+import rt_00_functions as rtf
 
 
 class EtherNetwork:
@@ -9,8 +9,8 @@ class EtherNetwork:
     origFrq = None
     afterFrq = None
     trimmed = False
-    A = 'NA'
-    B = 'NA'
+    A = None
+    B = None
     a = 1
     b = 10
     periodList = None
@@ -54,3 +54,31 @@ class EtherNetwork:
         file.write(self.networkDF['value'].describe())
 
         file.close()
+
+    def normalValues(self):
+        value_list = self.networkDF['value']
+        self.networkDF['value2'] = round(
+            value_list.apply(lambda x: 1 / 1 + x - self.A) * (self.b - self.a) / (self.B - self.A), 5)
+
+    def procOriginal(self, recordFolder, distFolder):
+        recordFolder = self.tkOutFolder + "\\" + recordFolder
+        distFolder = self.tkOutFolder + "\\" + distFolder
+
+        try:
+            os.mkdir(recordFolder)
+        except OSError():
+            print("Creation of the directory %s failed" % recordFolder)
+
+        try:
+            os.mkdir(distFolder)
+        except OSError():
+            print("Creation of the directory %s failed" % distFolder)
+
+        self.periodList = self.networkDF['time'].unique()
+        totalInfo = None
+        file = open(recordFolder + "\\log.txt")
+        for cur in self.periodList:
+            periodDF = self.networkDF[self.networkDF['time'] == cur]
+            file.write(cur)
+            periodDF = rtf.selectTop(periodDF, topSize=len(self.networkDF))
+            # TODO - finish function
