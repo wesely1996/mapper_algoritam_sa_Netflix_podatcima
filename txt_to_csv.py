@@ -1,11 +1,6 @@
 import os
 
-
-if __name__ == "__main__":
-    data_dir = "./data"
-    merged_txt_file = os.path.join(data_dir, "combined_data_all.txt")
-    merged_csv_file = os.path.join(data_dir, "combined_data_all.csv")
-
+def txt_to_csv(from_file, to_file):
     movie_id = None
     with open(merged_csv_file, "w") as csv_f:
         with open(merged_txt_file, "r") as txt_f:
@@ -19,3 +14,11 @@ if __name__ == "__main__":
                 else:
                     line = movie_id + "," + line
                     csv_f.write(line)
+
+
+if __name__ == "__main__":
+    data_dir = "./data"
+    merged_txt_file = os.path.join(data_dir, "combined_data_all.txt")
+    merged_csv_file = os.path.join(data_dir, "combined_data_all.csv")
+
+    txt_to_csv(merged_txt_file, merged_csv_file)
