@@ -1,9 +1,7 @@
-import os
-
 def txt_to_csv(from_file, to_file):
     movie_id = None
-    with open(merged_csv_file, "w") as csv_f:
-        with open(merged_txt_file, "r") as txt_f:
+    with open(from_file, "w") as csv_f:
+        with open(to_file, "r") as txt_f:
             csv_f.write('MovieID,CustomerID,Rating,Date\n')
             for line in txt_f:
                 line_split = line.split(",")
@@ -18,8 +16,8 @@ def txt_to_csv(from_file, to_file):
 
 def txt_to_csv_sample(from_file, to_file, amount):
     movie_id = None
-    with open(merged_csv_file, "w") as csv_f:
-        with open(merged_txt_file, "r") as txt_f:
+    with open(from_file, "w") as csv_f:
+        with open(to_file, "r") as txt_f:
             csv_f.write('MovieID,CustomerID,Rating,Date\n')
             for line in txt_f:
                 line_split = line.split(",")
@@ -36,15 +34,3 @@ def txt_to_csv_sample(from_file, to_file, amount):
                     break
                 amount -= 1
 
-
-if __name__ == "__main__":
-    data_dir = "./data"
-    merged_txt_file = os.path.join(data_dir, "combined_data_all.txt")
-    merged_csv_file = os.path.join(data_dir, "combined_data_all.csv")
-
-    txt_to_csv(merged_txt_file, merged_csv_file)
-
-    # Manja baza podataka za testiranje tokom razvoja
-    merged_csv_file = os.path.join(data_dir, "combined_data_sample.csv")
-
-    txt_to_csv_sample(merged_txt_file, merged_csv_file, 100000)

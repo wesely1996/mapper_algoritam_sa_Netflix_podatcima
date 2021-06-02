@@ -12,6 +12,3 @@ if __name__ == '__main__':
 
     data = pd.read_csv(data_file)
     train_data, test_data = train_test_split(data, test_size=0.2)
-
-    print(train_data.head())
-    print(data.columns)
