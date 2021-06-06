@@ -1,124 +1,82 @@
-import os
-import io
-import base64
 import argparse
+from collections import deque
+import os
 
-import keras
-from keras import backend as K
-from keras.models import Sequential
-from keras.layers import Dense, Dropout
-from keras.optimizers import Adam
-
-import kmapper as km
 import numpy as np
 import pandas as pd
-
-from matplotlib import pyplot as plt
-
-from sklearn.model_selection import train_test_split
-from sklearn import metrics, cluster
-from sklearn.metrics import classification_report
+from sklearn.neighbors import KNeighborsTransformer
 
 
-def fetch_and_transform_data(data_path):
-    data = pd.read_csv(data_path)
-    data = data.drop(['Date'], axis=1)
-    data['MovieID'] = data['MovieID'].astype(int)
-    data['CustomerID'] = data['CustomerID'].astype(int)
+def load_and_refine_data(data_path):
+    df_raw = pd.read_csv(data_path, header=None, names=["User", "Rating", "Date"], usecols=[0, 1, 2])
 
-    return data
-    
+    tmp_movies = df_raw[df_raw["Rating"].isna()]["User"].reset_index()
+    movie_indices = [[index, int(movie[:-1])] for index, movie in tmp_movies.values]
 
-def create_data_split(data):
-    # delimo skup na trening i test
-    train_data, test_data = train_test_split(data, test_size=0.2)
+    shifted_movie_indices = deque(movie_indices)
+    shifted_movie_indices.rotate(-1)
 
-    x_train_data = train_data.loc[:, train_data.columns != 'Rating'].values
-    y_train_data = train_data['Rating'].values
+    user_data = []
+    for [df_id_1, movie_id], [df_id_2, next_movie_id] in zip(movie_indices, shifted_movie_indices):
+        if df_id_1<df_id_2:
+            tmp_df = df_raw.loc[df_id_1+1:df_id_2-1].copy()
+        else:
+            tmp_df = df_raw.loc[df_id_1+1:].copy()
+            
+        tmp_df["Movie"] = movie_id
+        user_data.append(tmp_df)
 
-    x_test_data = test_data.loc[:, train_data.columns != 'Rating'].values
-    y_test_data = test_data['Rating'].values
+    df = pd.concat(user_data)
+    del user_data, df_raw, tmp_movies, tmp_df, shifted_movie_indices, movie_indices
+    del df_id_1, movie_id, df_id_2, next_movie_id
+    print(f"Shape of raw User-Ratings: {df.shape}")
 
-    print('Uci se na ', x_train_data.shape[0], 'primera, a testira se na', x_test_data.shape[0], 'primera')
-    
-    # ako je ocena 4 ili 5 onda je film preporucen, ako je niza onda nije
-    y_train_data = (y_train_data >= 4).astype(int)
-    y_test_data = (y_test_data >= 4).astype(int)
-
-    x_train_data = x_train_data.astype(np.float32)
-    x_test_data = x_test_data.astype(np.float32)
-
-    return x_train_data, y_train_data, x_test_data, y_test_data
+    return df
 
 
-def create_model(hyperparameters):
-    model = Sequential()
-    model.add(Dense(512, activation='relu', input_shape=(hyperparameters["input_dim"], )))
-    model.add(Dropout(0.1))
-    model.add(Dense(512, activation='relu'))
-    model.add(Dense(hyperparameters["output_dim"], activation='sigmoid'))
+def filter_data(df):
+    min_movie_ratings = 10000
+    filter_movies = (df["Movie"].value_counts() > min_movie_ratings)
+    filter_movies = filter_movies[filter_movies].index.tolist()
 
-    model.summary()
-    model.compile(loss='binary_crossentropy',
-                  optimizer='adam',
-                  metrics=['accuracy'])
+    min_user_ratings = 200
+    filter_users = (df["User"].value_counts() > min_user_ratings)
+    filter_users = filter_users[filter_users].index.tolist()
 
-    return model
+    df_filterd = df[(df['Movie'].isin(filter_movies)) & (df['User'].isin(filter_users))]
+    del filter_movies, filter_users, min_movie_ratings, min_user_ratings
+    print(f"Shape of filtered User-Ratings: {df_filterd.shape}")
+
+    return df_filterd
 
 
-if __name__ == '__main__':
+def create_train_test_split(df_filtered, n=100000):
+    df_filtered = df_filtered.drop('Date', axis=1).sample(frac=1).reset_index(drop=True)
+
+    # Split train- & testset
+    df_train = df_filtered[:-n]
+    df_test = df_filtered[-n:]
+
+    return df_train, df_test
+
+
+def make_data_sparse(df):
+    df_p = df.pivot_table(index="User", columns="Movie", values="Rating", fill_value=0)
+    print(f"Shape of User-Movie: {df_p.shape}")
+
+
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_dir", help="Directory of data", type=str, default="data")
+    parser.add_argument("--data_dir", type=str, default="./data")
     args, _ = parser.parse_known_args()
 
-    data_path = os.path.join(args.data_dir, "combined_data_sample.csv")
-    # data_path = os.path.join(args.data_dir, "combined_data_all.csv")
-    data = fetch_and_transform_data(data_path)
+    data_path = os.path.join(args.data_dir, "combined_data_1.txt")
+    df_raw = load_and_refine_data(data_path)
+    df_filtered = filter_data(df_raw)
+    df_train, df_test = create_train_test_split(df_filtered)
 
-    x_train_data, y_train_data, x_test_data, y_test_data = create_data_split(data)
+    df_train_sparse = make_data_sparse(df_train)
+    df_test_sparse = make_data_sparse(df_test)
 
-    hyperparameters = {
-        "batch_size": 32768,
-        "epochs": 1,
-        "input_dim": x_train_data.shape[1],
-        "output_dim": 1
-    }
-    model = create_model(hyperparameters)
-
-    history_of_learning = model.fit(x_train_data, y_train_data,
-                                    batch_size=hyperparameters["batch_size"],
-                                    epochs=hyperparameters["epochs"],
-                                    verbose=1,
-                                    validation_data=(x_test_data, y_test_data))
-    result = model.evaluate(x_test_data, y_test_data, verbose=0)
-    print(f'Greska: {result[0]}')
-    print(f'Tacnost: {result[1]}')
-
-    y_test_preds = model.predict(x_test_data, batch_size=hyperparameters["batch_size"]).flatten()
-    y_test_preds = np.where(y_test_preds > 0.5, 1, 0).astype(np.int32)
-    print(classification_report(y_test_data, y_test_preds))
-
-    # number_of_passes = 1000
-    # predicted_stochastic = K.function(inputs=[model.layers[0].input, K.learning_phase()],
-    #                                   outputs=[model.layers[-1].output])
-
-    # y_pred_test = np.array([predicted_stochastic([x_test_data, 1]) for _ in range(number_of_passes)])
-    # y_pred_stochs_test = y_pred_test.reshape(-1, y_test_data.shape[0]).T
-
-    # y_pred_std_test = np.std(y_pred_stochs_test, axis=1)
-    # y_pred_mean_test = np.mean(y_pred_stochs_test, axis=1)
-    # y_pred_modus_test = (np.mean(y_pred_stochs_test > .5, axis=1) > .5).astype(int).reshape(-1, 1)
-
-    # y_pred_var_rel_test = 1 - np.mean((y_pred_stochs_test > .5) == y_pred_modus_test, axis=1)
-
-    # analyse_test_results = pd.DataFrame({
-    #     "y_tacno": y_test_data,
-    #     "y_pred": y_pred_mean_test,
-    #     "VR": y_pred_var_rel_test,
-    #     "STD": y_pred_std_test
-    # })
-
-    # print("Tacnost:", metrics.accuracy_score(y_true=y_test_data, y_pred=y_pred_mean_test > .5))
-    # print("Opis rezultata:")
-    # print(analyse_test_results.describe())
-
+    # model = KNeighborsTransformer(n_neighbors=5)
+    # model.fit(df_train_sparse)
